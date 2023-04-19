@@ -1,0 +1,29 @@
+import numpy as np
+import scipy.signal as signal
+import mne
+from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score
+
+# Load EEG data
+raw = mne.io.read_raw_edf('eeg_data.edf', preload=True)
+raw.filter(7, 30)
+epochs = mne.make_fixed_length_epochs(raw, duration=4)
+X = epochs.get_data()
+y = epochs.events[:, -1]
+
+# Preprocessing
+X_filt = signal.firwin(numtaps=101, cutoff=[1, 30], pass_band='bandpass', fs=epochs.info['sfreq']) # Bandpass filter
+X_filt = signal.filtfilt(X_filt, [1], X) # Apply filter
+X_csp = mne.decoding.CSP(n_components=4).fit_transform(X_filt, y) # Apply CSP
+
+# Feature extraction
+X_psd = np.log10(np.abs(np.fft.rfft(X_csp)) ** 2) # Power spectral density
+
+# Machine learning
+X_train, X_test, y_train, y_test = train_test_split(X_psd, y, test_size=0.3, random_state=42)
+svm = SVC(kernel='linear')
+svm.fit(X_train, y_train)
+y_pred = svm.predict(X_test)
+acc = accuracy_score(y_test, y_pred)
+print(f"Accuracy: {acc:.2f}")
